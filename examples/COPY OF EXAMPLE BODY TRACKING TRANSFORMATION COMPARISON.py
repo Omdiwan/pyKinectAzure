@@ -1,5 +1,7 @@
 import cv2
+import math
 import numpy as np
+from numpy import cos,sin
 import pandas as pd
 import pykinect_azure as pykinect
 from openpyxl import Workbook
@@ -7,6 +9,40 @@ import csv
 from scipy.spatial.transform import Rotation as R
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+from pyquaternion import Quaternion as pq
+import ctypes
+from pykinect_azure.k4abt._k4abtTypes import k4a_float3_t, k4a_quaternion_t
+
+def get_unit_quat_and_transformation_matrix(body_frame, joint_type):
+    body = body_frame.get_body(0)
+    joint_info = body.joints[joint_type].orientation
+    quat_dict = joint_info.__iter__()
+    vector_4d = np.array([quat_dict['w'], quat_dict['x'], quat_dict['y'], quat_dict['z']])
+    quat = pq(array=vector_4d)
+    unit_quat = quat.normalised
+    transformation_matrix = quat.transformation_matrix
+    return unit_quat, transformation_matrix
+
+def dh_matrix(a_val, alpha_val, d_val, theta_val):
+    """
+    Calculate the DH transformation matrix given DH parameters.
+
+    Parameters:
+    a_val (float): Link length.
+    alpha_val (float): Link twist in radians.
+    d_val (float): Link offset.
+    theta_val (float): Joint angle in radians.
+
+    Returns:
+    numpy.ndarray: DH transformation matrix.
+    """
+    matrix = np.array([
+        [cos(theta_val), -sin(theta_val) , 0, a_val]
+        [sin(theta_val)*cos(alpha_val), cos(theta_val) * cos(alpha_val), -sin(alpha_val), -sin(alpha_val)*d_val],
+        [sin(theta_val)*sin(alpha_val), cos(theta_val)*sin(alpha_val), cos(alpha_val), cos(alpha_val)*d_val],
+        [0, 0, 0, 1]
+    ])
+    return matrix
 
 if __name__ == "__main__":
 
@@ -17,8 +53,8 @@ if __name__ == "__main__":
 	device_config = pykinect.default_configuration
 	device_config.color_resolution = pykinect.K4A_COLOR_RESOLUTION_1080P
 	device_config.color_format = pykinect.K4A_IMAGE_FORMAT_COLOR_BGRA32
-	device_config.depth_mode = pykinect.K4A_DEPTH_MODE_WFOV_2X2BINNED
-	#print(device_config)
+	device_config.depth_mode = pykinect.K4A_DEPTH_MODE_NFOV_UNBINNED
+	
 
 	# Start device
 	device = pykinect.start_device(config=device_config)
@@ -27,7 +63,6 @@ if __name__ == "__main__":
 	bodyTracker = pykinect.start_body_tracker()
 
 	cv2.namedWindow('Color image with skeleton',cv2.WINDOW_NORMAL)
-	
 	list_degrees_z_list = []
 	list_degrees_y_list = []
 	list_degrees_x_list = []
@@ -36,12 +71,8 @@ if __name__ == "__main__":
 	average_angle_x =0
 	average_angle_y =0
 	iteration = 0
-	fig = plt.figure()
-	ax = fig.add_subplot(111,projection = '3d')
- 
 	
 
-	plt.ion()
 	while True:
 		iteration +=1
 		
@@ -183,6 +214,10 @@ if __name__ == "__main__":
 			color_right_wrist_2d = color_skeleton_2d[pykinect.K4ABT_JOINT_WRIST_RIGHT,:]
 			depth_right_wrist_2d = depth_skeleton_2d[pykinect.K4ABT_JOINT_WRIST_RIGHT,:]
    
+			#color_right_hip_2d = color_skeleton_2d[pykinect.K4ABT_JOINT_HIP_RIGHT,:]
+			#depth_right_hip_2d = depth_skeleton_2d[pykinect.K4ABT_JOINT_HIP_RIGHT,:]
+   
+   
    
 			depth_right_clavicle_float2 = pykinect.k4a_float2_t(depth_right_clavicle_2d)
 			depth = depth_image[int(depth_right_clavicle_2d[1]), int(depth_right_clavicle_2d[0])]
@@ -203,6 +238,11 @@ if __name__ == "__main__":
 			depth = depth_image[int(depth_right_wrist_2d[1]), int(depth_right_wrist_2d[0])]
 			depth_right_wrist_float3 = device.calibration.convert_2d_to_3d(depth_right_wrist_float2, depth, pykinect.K4A_CALIBRATION_TYPE_DEPTH, pykinect.K4A_CALIBRATION_TYPE_DEPTH)
 			depth_transformed_right_wrist_3d = [depth_right_wrist_float3.xyz.x, depth_right_wrist_float3.xyz.y, depth_right_wrist_float3.xyz.z]
+   
+			#depth_right_hip_float2 = pykinect.k4a_float2_t(depth_right_hip_2d)
+			#depth = depth_image[int(depth_right_hip_2d[1]), int(depth_right_hip_2d[0])]
+			#depth_right_hip_float3 = device.calibration.convert_2d_to_3d(depth_right_hip_float2, depth, pykinect.K4A_CALIBRATION_TYPE_DEPTH, pykinect.K4A_CALIBRATION_TYPE_DEPTH)
+			#depth_transformed_right_hip_3d = [depth_right_hip_float3.xyz.x, depth_right_hip_float3.xyz.y, depth_right_hip_float3.xyz.z]
 
    
 			color_right_clavicle_3d = transformed_points_map[int(color_right_clavicle_2d[1]), int(color_right_clavicle_2d[0]), :]
@@ -223,6 +263,10 @@ if __name__ == "__main__":
 			color_right_wrist_3d = transformed_points_map[int(color_right_wrist_2d[1]), int(color_right_wrist_2d[0]), :]
 			depth_right_wrist_3d = points_map[int(depth_right_wrist_2d[1]), int(depth_right_wrist_2d[0]), :]
 			right_wrist_3d = skeleton_3d[pykinect.K4ABT_JOINT_WRIST_RIGHT,:3]
+   
+			#color_right_hip_3d = transformed_points_map[int(color_right_hip_2d[1]), int(color_right_hip_2d[0]), :]
+			#depth_right_hip_3d = points_map[int(depth_right_hip_2d[1]), int(depth_right_hip_2d[0]), :]
+			#right_hip_3d = skeleton_3d[pykinect.K4ABT_JOINT_HIP_RIGHT,:3]
 			
 			#elbows
 			# Calculate vectors between the joints for elbows
@@ -245,9 +289,10 @@ if __name__ == "__main__":
 			vector_elbow_to_shoulder_right = right_shoulder_3d - right_elbow_3d
    
 
-			vector_shoulder_to_elbow_right = right_elbow_3d - right_shoulder_3d
-			vector_right_shoulder_to_left_shoulder = -left_shoulder_3d + right_shoulder_3d
-
+			vector_shoulder_to_elbow_right = depth_right_elbow_3d -depth_right_shoulder_3d
+			vector_right_shoulder_to_left_shoulder = -depth_left_shoulder_3d + depth_right_shoulder_3d
+   
+			
 			# Calculate the dot product and magnitude of the vectors for right side
 			dot_product = np.dot(vector_elbow_to_wrist_right, vector_elbow_to_shoulder_right)
 			magnitude_elbow_to_wrist_right = np.linalg.norm(vector_elbow_to_wrist_right)
@@ -259,31 +304,177 @@ if __name__ == "__main__":
 
 			# Convert the angle to degrees for right side *IMP IMP*
 			angle_degrees_right_elbow = np.degrees(angle_radians_right_elbow)
-   
+			
 			#if not np.isnan(angle_degrees_right_elbow) and not np.isnan(angle_degrees_left_elbow):
 				#angles_list.append({"Left elbow angle": angle_degrees_left_elbow, "Right elbow angle": angle_degrees_right_elbow})
     
 			
 			#finding relevant vectors for shoulder orientation
-			vector_left_to_right_clavicle = right_clavicle_3d - left_clavicle_3d
-			vector_left_to_right_shoulder = right_shoulder_3d - left_shoulder_3d
-			vector_neck_to_spine_chest = spine_chest_3d - neck_3d
-			vector_chest_to_navel =  spine_navel_3d - spine_chest_3d
+			vector_left_to_right_clavicle = depth_right_clavicle_3d - depth_left_clavicle_3d
+			vector_left_to_right_shoulder = depth_right_shoulder_3d - depth_left_shoulder_3d
+			vector_neck_to_spine_chest = depth_spine_chest_3d - depth_neck_3d
+			vector_chest_to_navel =  depth_spine_navel_3d - depth_spine_chest_3d
 		
 			normalized_left_to_right_shoulder = vector_left_to_right_shoulder / np.linalg.norm(vector_left_to_right_shoulder)
 			normalized_neck_to_spine_chest = vector_neck_to_spine_chest / np.linalg.norm(vector_neck_to_spine_chest)
 			normalized_shoulder_to_elbow_right = vector_shoulder_to_elbow_right/np.linalg.norm(vector_shoulder_to_elbow_right)
 			normalized_chest_to_navel = vector_chest_to_navel/np.linalg.norm(vector_chest_to_navel)
+   
 			#we first find the forward facing vector
 			forward_facing = np.cross(vector_left_to_right_shoulder, vector_chest_to_navel)
 			normalized_forward_facing = forward_facing/np.linalg.norm(forward_facing)
+			'''
+			vector_right_hip_to_shoulder = depth_right_shoulder_3d-depth_right_hip_3d
+			#trying wrt Hip Frame of Reference
+   
+   
+			elbow_torso_plane_normal = np.cross(-vector_right_hip_to_shoulder, vector_shoulder_to_elbow_right)
+			elbow_torso_plane_unit = elbow_torso_plane_normal/np.linalg.norm(elbow_torso_plane_normal)
 			
-			#ANGle between cam plane and body plane
+			vector_body_plane_normal = np.cross(-vector_left_to_right_shoulder, -vector_right_hip_to_shoulder)
+			vector_body_plane_unit = vector_body_plane_normal/np.linalg.norm(vector_body_plane_normal)
+		
+			a = np.dot(elbow_torso_plane_unit, vector_body_plane_unit)
+			
+			theta_1 = np.degrees(a)
+			theta_2 = np.degrees(np.dot(-vector_right_hip_to_shoulder,vector_shoulder_to_elbow_right)/(np.linalg.norm(vector_right_hip_to_shoulder)*np.linalg.norm(vector_shoulder_to_elbow_right)))
+			
+			print(theta_2)
+			'''
+   			# Get quaternions and convert them to transfomation matrices
+   
+			
+			translate_nc = [spine_chest_3d[0]-spine_navel_3d[0],spine_chest_3d[1]-spine_navel_3d[1],spine_chest_3d[2]-spine_navel_3d[2]]
+			translate_clch = [right_clavicle_3d[0]-spine_chest_3d[0],right_clavicle_3d[1]-spine_chest_3d[1],right_clavicle_3d[2]-spine_chest_3d[2]]
+			translate_sc = [right_shoulder_3d[0]-right_clavicle_3d[0],right_shoulder_3d[1]-right_clavicle_3d[1],right_shoulder_3d[2]-right_clavicle_3d[2]]
+			
+			body = body_frame.get_body(0)
+			joint_info_right_shoulder =body.joints[pykinect.K4ABT_JOINT_SHOULDER_RIGHT].orientation
+			quat_right_shoulder_dict = joint_info_right_shoulder.__iter__()
+			vector_4d_right_shoulder = np.array([quat_right_shoulder_dict['w'],quat_right_shoulder_dict['x'],quat_right_shoulder_dict['y'],quat_right_shoulder_dict['z']])
+			quat_right_shoulder = pq(array = vector_4d_right_shoulder)
+			unit_quat_right_shoulder = quat_right_shoulder.normalised
+			t_shoulder = quat_right_shoulder.transformation_matrix
+			
+
+			joint_type_right_shoulder = pykinect.K4ABT_JOINT_SHOULDER_RIGHT
+			unit_quat_right_shoulder, t_shoulder = get_unit_quat_and_transformation_matrix(body_frame, joint_type_right_shoulder)
+			joint_type_right_clavicle = pykinect.K4ABT_JOINT_CLAVICLE_RIGHT
+			unit_quat_right_clavicle, t_clavicle = get_unit_quat_and_transformation_matrix(body_frame, joint_type_right_clavicle)
+			joint_type_chest = pykinect.K4ABT_JOINT_SPINE_CHEST
+			unit_quat_chest, t_chest = get_unit_quat_and_transformation_matrix(body_frame, joint_type_chest)	
+			joint_type_navel = pykinect.K4ABT_JOINT_SPINE_NAVEL
+			unit_quat_navel, t_navel = get_unit_quat_and_transformation_matrix(body_frame, joint_type_navel)
+			joint_type_pelvis = pykinect.K4ABT_JOINT_PELVIS
+			unit_quat_pelvis, t_pelvis = get_unit_quat_and_transformation_matrix(body_frame, joint_type_pelvis)
+
+			Q_shoulder_to_camera = pq(np.array([1, 0, 0, 0]))
+			Q_shoulder_to_camera = (Q_shoulder_to_camera* unit_quat_right_shoulder)
+			Q_shoulder_to_camera = (Q_shoulder_to_camera*unit_quat_right_clavicle)
+			Q_shoulder_to_camera = (Q_shoulder_to_camera* unit_quat_chest)
+			Q_shoulder_to_camera = (Q_shoulder_to_camera* unit_quat_navel)
+			Q_shoulder_to_camera = (Q_shoulder_to_camera*unit_quat_pelvis)
+			
+			
+
+
+			
+
+
+
+			#resultant_quaternion = unit_quat_right_shoulder * unit_quat_right_clavicle* unit_quat_chest * unit_quat_navel * unit_quat_pelvis
+			#r_resultant = resultant_quaternion.rotation_matrix
+
+			
+			
+			
+			for i in range(3):
+				t_shoulder[i][3] = translate_sc[i]
+				t_clavicle[i][3] = translate_clch[i]
+				t_chest[i][3] = translate_nc[i]
+			r_is_x =[[1, 0, 0],
+       			  [0, cos(-90), -sin(-90)],
+                  [0, sin(-90), cos(-90)]]
+			r_is_z = [[cos(-90), -sin(-90), 0],
+       				 [sin(-90), cos(-90), 0],
+          	  	 	 [0, 0, 1]]
+			del_x = right_shoulder_3d[0] - spine_navel_3d[0]
+			del_y = right_shoulder_3d[1] - spine_navel_3d[1]
+			del_z = right_shoulder_3d[2] - spine_navel_3d[2]
+			r_is = np.matmul(r_is_x,r_is_z)
+			t_is = np.array([[r_is[0][0],r_is[0][1],r_is[0][2],del_x],
+           			[r_is[1][0],r_is[1][1],r_is[1][2],del_y],
+              		[r_is[2][0],r_is[2][1],r_is[2][2],del_z],
+                	[0,0,0,1]])
+		
+			inv_t_is = np.linalg.inv(t_is)
+			
+			formatted_matrix =np.array(t_shoulder @ t_clavicle @ t_chest @ inv_t_is)
+		
+			pitch = np.degrees(np.arctan2(-formatted_matrix[0][2], np.sqrt(formatted_matrix[0][0]*formatted_matrix[0][0] + formatted_matrix[1][0]*formatted_matrix[1][0])))
+			yaw = np.degrees(np.arctan2(formatted_matrix[0][1], formatted_matrix[0][0]))
+			roll = np.degrees(np.arctan2(formatted_matrix[1][0], formatted_matrix[1][1]))
+			print(roll,pitch,yaw)
+			
+   			#squat_right_shoulder = pq(axis=[quat_right_shoulder_dict['x'],quat_right_shoulder_dict['y'],quat_right_shoulder_dict['z']], angle=quat_right_shoulder_dict['w'])
+			
+			'''
+			joint_info_right_clavicle =body.joints[pykinect.K4ABT_JOINT_CLAVICLE_RIGHT].orientation
+			quat_right_clavicle_dict = joint_info_right_clavicle.__iter__()
+			quat_right_clavicle = pq(axis=[quat_right_clavicle_dict['x'],quat_right_clavicle_dict['y'],quat_right_clavicle_dict['z']], angle=quat_right_clavicle_dict['w'])
+			v_prime_right_clavicle = quat_right_clavicle.rotate(np.array([1,0,0]))
+			
+			
+			joint_info_right_clavicle =body.joints[pykinect.K4ABT_JOINT_CLAVICLE_RIGHT].orientation
+			quat_right_clavicle_dict = joint_info_right_shoulder.__iter__()
+			vector_4d_right_clavicle = np.array([quat_right_clavicle_dict['w'],quat_right_clavicle_dict['x'],quat_right_clavicle_dict['y'],quat_right_clavicle_dict['z']])
+			quat_right_clavicle = pq(array = vector_4d_right_clavicle)
+			unit_quat_right_clavicle = quat_right_clavicle.normalised
+			t_clavicle = quat_right_clavicle.transformation_matrix
+			
+			
+			joint_info_chest =body.joints[pykinect.K4ABT_JOINT_SPINE_CHEST].orientation
+			quat_chest_dict = joint_info_chest.__iter__()
+			vector_4d_chest= np.array([quat_chest_dict['w'],quat_chest_dict['x'],quat_chest_dict['y'],quat_chest_dict['z']])
+			quat_chest = pq(array = vector_4d_chest)
+			unit_quat_chest = quat_chest.normalised
+			t_chest = quat_chest.transformation_matrix
+			
+   
+			joint_info_navel =body.joints[pykinect.K4ABT_JOINT_SPINE_NAVEL].orientation
+			quat_navel_dict = joint_info_navel.__iter__()
+			vector_4d_navel= np.array([quat_navel_dict['w'],quat_navel_dict['x'],quat_navel_dict['y'],quat_navel_dict['z']])
+			quat_navel = pq(array = vector_4d_navel)
+			unit_quat_navel = quat_navel.normalised
+			
+			rotation_chest = R.from_quat(vector_4d_chest)
+			rot_matrix_chest = rotation_chest.as_matrix()
+			x_axis_chest = np.array(rot_matrix_chest[:, 0])
+			y_axis_chest = np.array(rot_matrix_chest[:, 1])
+			z_axis_chest = np.array(rot_matrix_chest[:, 2])	
+			
+			
+			rotation_right_clavicle = R.from_quat(vector_4d_right_clavicle)
+			rot_matrix_right_clavicle = rotation_right_clavicle.as_matrix()
+			x_axis_right_clavicle= np.array(rot_matrix_right_clavicle[:, 0])
+			y_axis_right_clavicle = np.array(rot_matrix_right_clavicle[:, 1])
+			z_axis_right_clavicle = np.array(rot_matrix_right_clavicle[:, 2])
+   
+			rotation_right_shoulder = R.from_quat(vector_4d_right_shoulder)
+			rot_matrix_right_shoulder = rotation_right_shoulder.as_matrix()
+			x_axis_right_shoulder= np.array(rot_matrix_right_shoulder[:, 0])
+			y_axis_right_shoulder = np.array(rot_matrix_right_shoulder[:, 1])
+			z_axis_right_shoulder = np.array(rot_matrix_right_shoulder[:, 2])
+			'''
+
+			
+			
+			""" #ANGle between cam plane and body plane
 			dot_product_planes = np.dot([0,0,1],normalized_forward_facing)
 			angle_radians_planes = np.arccos(dot_product_planes)
-			angle_degrees_planes = np.degrees(angle_radians_planes)
+			angle_degrees_planes = np.degrees(angle_radians_planes) """
 			
-			
+		
 			#z
    
 			# Project the "Shoulder to Elbow" Vector onto the Plane
@@ -295,7 +486,7 @@ if __name__ == "__main__":
 			list_degrees_z_list.append(angle_degrees_z )
 			if len(list_degrees_z_list) >= max_values:
 				average_angle_z = np.mean(list_degrees_z_list)	
-				list_degrees_z_list =[]
+				list_degrees_z_list =[] 
 			#x
 			
 			
@@ -313,9 +504,9 @@ if __name__ == "__main__":
 			
 			dot_product_y = np.dot(normalized_shoulder_to_elbow_right,normalized_chest_to_navel)
 			y_projection = normalized_shoulder_to_elbow_right - dot_product_y*normalized_chest_to_navel
-			a = np.dot(y_projection,normalized_forward_facing)
+			a = np.dot(y_projection,vector_left_to_right_shoulder)
 			b = np.linalg.norm(y_projection)
-			c = np.linalg.norm(normalized_forward_facing) 
+			c = np.linalg.norm(vector_left_to_right_shoulder) 
 
 			angle_radians_y = np.arccos(a/(b * c))
 
@@ -323,48 +514,13 @@ if __name__ == "__main__":
 			list_degrees_y_list.append(angle_degrees_y)
 			if len(list_degrees_y_list) >= max_values:
 				average_angle_y = np.mean(list_degrees_y_list)
-				list_degrees_y_list =[]
+				list_degrees_y_list =[] 
+			np.set_printoptions(precision=4, suppress=True)
+			A,B,C= angle_degrees_z, angle_degrees_y, angle_degrees_x
 			
 			
-			#print(np.degrees(np.arccos(np.dot(vector_chest_to_navel,vector_left_to_right_shoulder)/(np.linalg.norm(vector_chest_to_navel)*np.linalg.norm(vector_left_to_right_shoulder)))))
-			
-			print(	iteration,
-         			np.round(180 - angle_degrees_planes,2),
-					np.round(angle_degrees_y,2),
-					np.round(a,2),
-					np.round(b,2),
-					np.round(c,2),
-					np.round(y_projection,2),
-					np.round(dot_product_y,2),
-					np.round(vector_shoulder_to_elbow_right,2),
-         			np.round(right_shoulder_3d,2), 
-            		np.round(right_elbow_3d,2),
-					np.round(vector_left_to_right_shoulder,2),
-              		np.round(left_shoulder_3d,2),
-                	np.round(right_shoulder_3d,2),
-					np.round(vector_chest_to_navel,2),
-                	np.round(spine_chest_3d,2),
-                 	np.round(spine_navel_3d,2)
-                )
-			#print(iteration, np.round(angle_degrees_y, 2), np.round(a, 2), np.round(b, 2), np.round(c, 2), np.round(y_projection, 2), np.round(vector_left_to_right_shoulder, 2), np.round(dot_product_y, 2), np.round(normalized_neck_to_spine_chest, 4), np.round(vector_shoulder_to_elbow_right, 2), np.round(right_elbow_3d, 2), np.round(right_shoulder_3d, 2), np.round(vector_neck_to_spine_chest, 2), np.round(spine_chest_3d, 2), np.round(neck_3d, 2))
-		
-		#visualization of vectors
-		ax.clear()
-		for art in ax.artists:
-			art.remove()
 			
 		
-		ax.quiver(100, 100, 100, vector_left_to_right_shoulder[0], vector_left_to_right_shoulder[1], vector_left_to_right_shoulder[2], color='g', label='Left to Right Shoulder Vector')
-		ax.quiver(100, 100, 100, vector_chest_to_navel[0], vector_chest_to_navel[1], vector_chest_to_navel[2], color='r', label='chest to navel ')
-		ax.set_xlabel('X')
-		ax.set_ylabel('Y')
-		ax.set_zlabel('Z')
-		ax.set_title('Relevant Vectors Visualization')
-		ax.legend()
-		plt.show()
- 
-    
-    
         # Draw the skeletons into the color image
 		color_skeleton = body_frame.draw_bodies(color_image, pykinect.K4A_CALIBRATION_TYPE_COLOR)
 		transformed_color_skeleton = body_frame.draw_bodies(transformed_color_image, pykinect.K4A_CALIBRATION_TYPE_DEPTH)
@@ -372,20 +528,19 @@ if __name__ == "__main__":
 		# Overlay body segmentation on depth image
 		#position_left = (int(color_left_elbow_2d[0]), int(color_left_elbow_2d[1])) 
 		position_right_elbow = (int(color_right_elbow_2d[0]), int(color_right_elbow_2d[1])) 
-		text = f"X Angle: {angle_degrees_x:.2f} Y Angle: {angle_degrees_y:.2f} Z Angle: {angle_degrees_z:.2f} Iteration: {iteration}"
+		
 
-
+		
 
 		x = color_skeleton.shape[1] -1850
-		y = 50
-		cv2.putText(color_skeleton,text , (x, y), cv2.FONT_HERSHEY_DUPLEX, 1.75, (255, 0, 255), 2)
-		cv2.imshow('Color image with skeleton', color_skeleton)
+		y = color_skeleton.shape[0] - 1000
+		#text = f'alpha : {angle_x_deg:.2f} beta : {angle_y_deg:.2f} gamma :{angle_z_deg:.2f} Iteration : {iteration}'
+		#cv2.putText(color_skeleton, text, (x, y), cv2.FONT_HERSHEY_DUPLEX,2, (255, 0, 255), 2)
 
-		plt.draw()
-		plt.pause(0.01)
+		cv2.imshow('Color image with skeleton', color_skeleton)
 
      
 		
 		if cv2.waitKey(1) == ord('q'):
 			break
- 
+			break

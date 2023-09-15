@@ -1,0 +1,23 @@
+import matplotlib.pyplot as plt
+import numpy as np
+from mpl_toolkits.mplot3d import Axes3D
+
+fig = plt.figure()
+ax = fig.add_subplot(111,projection = '3d')
+
+ax.quiver(0, 0, 0, 0.93831974, -0.28120529, -0.20119556, color='g', label='clavicle')
+ax.quiver(0, 0, 0, 0.93838728, -0.27814751, -0.20509332, color='b', label='shoulder')
+shoulder1= np.array([0.93831974, -0.28120529, -0.20119556])
+shoulder2 = np.array([0.93838728, -0.27814751, -0.20509339])
+dot = np.dot(shoulder1,shoulder2)
+norm_s = np.linalg.norm(shoulder1)
+norm_c = np.linalg.norm(shoulder2)
+angle_degrees = np.degrees(np.arccos(dot/(norm_c*norm_s)))
+
+print(angle_degrees)
+ax.set_xlabel('X')
+ax.set_ylabel('Y')
+ax.set_zlabel('Z')
+ax.set_title('Relevant Vectors Visualization')
+ax.legend()
+plt.show()
