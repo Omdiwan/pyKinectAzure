@@ -81,4 +81,3 @@ if __name__ == "__main__":
 		# Press q key to stop
 		if cv2.waitKey(1) == ord('q'):
 			break
-
