@@ -22,7 +22,21 @@ def get_unit_quat_and_transformation_matrix(body_frame, joint_type):
     unit_quat = quat.normalised
     transformation_matrix = quat.transformation_matrix
     return unit_quat, transformation_matrix
-
+def twoD_to_threeD(color_skeleton_2d, depth_skeleton_2d,depth_image, device, calibration, joint):
+    color_joint_2d = color_skeleton_2d[joint,:]
+    depth_joint_2d = depth_skeleton_2d[joint,:]
+    
+    depth_float2 = pykinect.k4a_float2_t(depth_joint_2d)
+    depth = depth_image[int(depth_joint_2d[1]), int(depth_joint_2d[0])]
+    depth_float3 = device.calibration.convert_2d_to_3d(depth_float2,depth, pykinect.K4A_CALIBRATION_TYPE_DEPTH, pykinect.K4A_CALIBRATION_TYPE_DEPTH)
+    depth_transformed_3d = [depth_float3.xyz.x, depth_neck_float3.xyz.y, depth_neck_float3.xyz.z]
+    
+    color_joint_3d = transformed_points_map[int(color_joint_2d[1]), int(color_joint_2d[0]), :]
+    depth_joint_3d =  points_map[int(depth_joint_2d[1]), int(depth_joint_2d[0]), :]
+    joint_3d = skeleton_3d[joint,:3]
+			
+    return depth_transformed_3d, color_joint_3d, depth_joint_3d, joint_3d
+    
 def dh_matrix(a_val, alpha_val, d_val, theta_val):
     """
     Calculate the DH transformation matrix given DH parameters.
@@ -43,6 +57,9 @@ def dh_matrix(a_val, alpha_val, d_val, theta_val):
         [0, 0, 0, 1]
     ])
     return matrix
+
+
+    
 
 if __name__ == "__main__":
 
@@ -375,7 +392,7 @@ if __name__ == "__main__":
 			Q_shoulder_to_camera = (Q_shoulder_to_camera* unit_quat_navel)
 			Q_shoulder_to_camera = (Q_shoulder_to_camera*unit_quat_pelvis)
 			
-			
+			A = Q_shoulder_to_camera.rotation_matrix  
 
 
 			
@@ -387,7 +404,7 @@ if __name__ == "__main__":
 
 			
 			
-			
+			'''
 			for i in range(3):
 				t_shoulder[i][3] = translate_sc[i]
 				t_clavicle[i][3] = translate_clch[i]
@@ -415,7 +432,7 @@ if __name__ == "__main__":
 			yaw = np.degrees(np.arctan2(formatted_matrix[0][1], formatted_matrix[0][0]))
 			roll = np.degrees(np.arctan2(formatted_matrix[1][0], formatted_matrix[1][1]))
 			print(roll,pitch,yaw)
-			
+			'''
    			#squat_right_shoulder = pq(axis=[quat_right_shoulder_dict['x'],quat_right_shoulder_dict['y'],quat_right_shoulder_dict['z']], angle=quat_right_shoulder_dict['w'])
 			
 			'''
